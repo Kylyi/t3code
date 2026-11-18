@@ -1,5 +1,6 @@
 import { T, useGT } from "gt-react";
 import { Button } from "../ui/button";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import type { GentlBoardMetadata, GentlOption } from "./gentlClient";
 import { GentlChoices, GentlPicker } from "./gentlControls";
 
@@ -7,7 +8,7 @@ export interface GentlTaskFilters {
   sprintId?: string | null;
   userIds?: string[];
   tagIds?: string[];
-  statusId?: string;
+  statusIds?: string[];
   priorityId?: string;
   typeId?: string;
 }
@@ -29,11 +30,7 @@ export function GentlBoardFilters({
   const gt = useGT();
   const selectedUsers = value.userIds ?? [];
   const onlyMe = !!viewerId && selectedUsers.length === 1 && selectedUsers[0] === viewerId;
-  const enumField = (
-    label: string,
-    field: "statusId" | "priorityId" | "typeId",
-    options: GentlOption[],
-  ) => (
+  const enumField = (label: string, field: "priorityId" | "typeId", options: GentlOption[]) => (
     <GentlPicker
       label={label}
       value={value[field] ?? null}
@@ -64,7 +61,23 @@ export function GentlBoardFilters({
             onChange(next);
           }}
         />
-        {enumField(gt("Status"), "statusId", metadata.statuses)}
+        <Select
+          multiple
+          items={metadata.statuses.map(({ id, name }) => ({ value: id, label: name }))}
+          value={value.statusIds ?? []}
+          onValueChange={(statusIds) => onChange({ ...value, statusIds })}
+        >
+          <SelectTrigger aria-label={gt("Status")} size="sm">
+            <SelectValue placeholder={gt("Status")} />
+          </SelectTrigger>
+          <SelectPopup>
+            {metadata.statuses.map(({ id, name }) => (
+              <SelectItem key={id} value={id}>
+                {name}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
         {enumField(gt("Priority"), "priorityId", metadata.priorities)}
         {enumField(gt("Type"), "typeId", metadata.types)}
       </div>

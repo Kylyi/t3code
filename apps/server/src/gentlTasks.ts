@@ -43,7 +43,7 @@ export const GentlCommand = z.discriminatedUnion("action", [
         sprintId: id.nullable().optional(),
         userIds: z.array(id).max(100).optional(),
         tagIds: z.array(id).max(100).optional(),
-        statusId: id.optional(),
+        statusIds: z.array(id).max(100).optional(),
         priorityId: id.optional(),
         typeId: id.optional(),
       })
@@ -377,7 +377,7 @@ export const runGentlCommand = Effect.fn("GentlTasks.run")(
             ...(filters?.tagIds?.length
               ? { AND: filters.tagIds.map((id) => ({ tags: { some: { id } } })) }
               : {}),
-            ...(filters?.statusId ? { statusId: filters.statusId } : {}),
+            ...(filters?.statusIds?.length ? { statusId: { in: filters.statusIds } } : {}),
             ...(filters?.priorityId ? { priorityId: filters.priorityId } : {}),
             ...(filters?.typeId ? { typeId: filters.typeId } : {}),
           },

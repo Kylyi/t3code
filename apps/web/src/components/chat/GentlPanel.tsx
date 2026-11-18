@@ -184,7 +184,7 @@ function GentlBoardTasks({
     !!(
       filters.userIds?.length ||
       filters.tagIds?.length ||
-      filters.statusId ||
+      filters.statusIds?.length ||
       filters.priorityId ||
       filters.typeId
     );
