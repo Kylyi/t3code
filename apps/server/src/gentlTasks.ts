@@ -1,3 +1,4 @@
+import * as NodeModule from "node:module";
 import * as NodeOS from "node:os";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Config from "effect/Config";
@@ -6,7 +7,11 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
-import { z } from "zod";
+import type { z as Zod } from "zod";
+
+// Zod is a file-backed dependency of the packaged WSL runtime.
+const requireDependency = NodeModule.createRequire(import.meta.url);
+const { z } = requireDependency("zod") as typeof import("zod");
 
 const id = z.string().trim().min(1).max(200);
 const cursor = z.string().max(500).optional();
@@ -56,7 +61,7 @@ const targetConfig = z.object({
   apiKey: z.string().optional(),
   instanceId: id.optional(),
 });
-type Target = z.infer<typeof targetConfig>;
+type Target = Zod.infer<typeof targetConfig>;
 const instances = z.array(
   z.object({ id, name: z.string(), domainName: z.string().nullable().optional() }),
 );
@@ -174,7 +179,7 @@ const call = Effect.fn("GentlTasks.call")(function* (
 const PAGE_SIZE = 50;
 
 export const runGentlCommand = Effect.fn("GentlTasks.run")(
-  function* (command: z.infer<typeof GentlCommand>) {
+  function* (command: Zod.infer<typeof GentlCommand>) {
     const targets: Record<string, Target> = yield* loadTargets();
     if (command.action === "workspaces") {
       const groups = yield* Effect.forEach(
