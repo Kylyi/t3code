@@ -19,6 +19,11 @@ import { GentlBoardFilters, type GentlTaskFilters } from "./GentlBoardFilters";
 import { GentlLoadState, GentlPicker, GentlBadge } from "./gentlControls";
 import { GentlTaskDetail } from "./GentlTaskDetail";
 import {
+  EMPTY_GENTL_PREFERENCES,
+  useGentlPreferences,
+  type GentlPreferences,
+} from "./gentlPreferences";
+import {
   gentlRequest,
   useGentlData,
   type GentlBoard,
@@ -29,10 +34,12 @@ import {
 } from "./gentlClient";
 
 export function GentlPanel({
+  projectKey,
   threadRef,
   composerTarget,
   visible,
 }: {
+  readonly projectKey: string | null;
   readonly threadRef: ScopedThreadRef;
   readonly composerTarget: ScopedThreadRef | DraftId;
   readonly visible: boolean;
@@ -43,7 +50,16 @@ export function GentlPanel({
     0,
     visible,
   );
-  const [workspaceKey, setWorkspaceKey] = useState<string | null>(null);
+  const saved = useGentlPreferences((state) =>
+    projectKey ? state.byProject[projectKey] : undefined,
+  );
+  const [local, setLocal] = useState(EMPTY_GENTL_PREFERENCES);
+  const preferences = projectKey ? (saved ?? EMPTY_GENTL_PREFERENCES) : local;
+  const { workspaceKey } = preferences;
+  const save = (next: GentlPreferences) => {
+    if (projectKey) useGentlPreferences.getState().save(projectKey, next);
+    else setLocal(next);
+  };
   const options = workspaces.value?.workspaces ?? [];
   const key = (workspace: GentlWorkspace) => `${workspace.target}:${workspace.id}`;
   const workspace = options.find((item) => key(item) === workspaceKey);
@@ -55,7 +71,7 @@ export function GentlPanel({
         <div className="border-b border-border px-3 py-2">
           <GentlPicker
             label={gt("Workspace")}
-            value={workspaceKey}
+            value={workspace ? workspaceKey : null}
             disabled={options.length === 0}
             options={options.map((item) => ({
               id: key(item),
@@ -63,7 +79,9 @@ export function GentlPanel({
                 ? `${item.name} (${item.target})`
                 : item.name,
             }))}
-            onChange={setWorkspaceKey}
+            onChange={(next) => {
+              if (next !== workspaceKey) save({ ...EMPTY_GENTL_PREFERENCES, workspaceKey: next });
+            }}
           />
           {options.length === 0 && (
             <p className="mt-2 text-sm text-muted-foreground">
@@ -73,7 +91,10 @@ export function GentlPanel({
         </div>
       )}
       {workspace && (
-        <GentlWorkspaceBoards key={key(workspace)} {...{ workspace, threadRef, composerTarget }} />
+        <GentlWorkspaceBoards
+          key={key(workspace)}
+          {...{ workspace, threadRef, composerTarget, preferences, save }}
+        />
       )}
     </section>
   );
@@ -83,15 +104,19 @@ function GentlWorkspaceBoards({
   workspace,
   threadRef,
   composerTarget,
+  preferences,
+  save,
 }: {
   workspace: GentlWorkspace;
   threadRef: ScopedThreadRef;
   composerTarget: ScopedThreadRef | DraftId;
+  preferences: GentlPreferences;
+  save: (next: GentlPreferences) => void;
 }) {
   const gt = useGT();
   const scope = { target: workspace.target, instanceId: workspace.id };
   const boards = useGentlData<{ boards: GentlBoard[] }>({ action: "boards", ...scope });
-  const [boardId, setBoardId] = useState<string | null>(null);
+  const { boardId } = preferences;
   if (!boards.value) return <GentlLoadState {...boards} />;
   const board = boards.value.boards.find((item) => item.id === boardId);
   return (
@@ -99,14 +124,16 @@ function GentlWorkspaceBoards({
       <div className="border-b border-border px-3 py-2">
         <GentlPicker
           label={gt("Board")}
-          value={boardId}
+          value={board ? boardId : null}
           options={boards.value.boards.map((item) => ({
             ...item,
             name: item.structureNames?.length
               ? `(${item.structureNames.join(" / ")}) ${item.name}`
               : item.name,
           }))}
-          onChange={setBoardId}
+          onChange={(next) => {
+            if (next !== boardId) save({ ...preferences, boardId: next, filters: {} });
+          }}
           disabled={!boards.value.boards.length}
         />
         {!boards.value.boards.length && (
@@ -118,6 +145,8 @@ function GentlWorkspaceBoards({
       {board && (
         <GentlBoardTasks
           key={board.id}
+          filters={preferences.filters}
+          setFilters={(filters) => save({ ...preferences, filters })}
           {...{ board, scope, workspace, threadRef, composerTarget }}
         />
       )}
@@ -131,8 +160,12 @@ function GentlBoardTasks({
   workspace,
   threadRef,
   composerTarget,
+  filters,
+  setFilters,
 }: {
   board: GentlBoard;
+  filters: GentlTaskFilters;
+  setFilters: (filters: GentlTaskFilters) => void;
   scope: GentlScope;
   workspace: GentlWorkspace;
   threadRef: ScopedThreadRef;
@@ -142,7 +175,6 @@ function GentlBoardTasks({
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
   const query = useDebouncedValue(search.trim(), 220);
-  const [filters, setFilters] = useState<GentlTaskFilters>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
   const viewer = useGentlData<{ userId: string | null }>(
     filtersOpen ? { action: "viewer", ...scope } : null,

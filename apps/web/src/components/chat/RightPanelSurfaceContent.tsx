@@ -10,7 +10,11 @@ import type {
   ThreadLinkedPullRequest,
   ThreadPullRequestLink,
 } from "@t3tools/contracts";
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import {
+  scopedProjectKey,
+  scopedThreadKey,
+  scopeProjectRef,
+} from "@t3tools/client-runtime/environment";
 import { lazy, Suspense } from "react";
 import SideChatPane from "./SideChatPane";
 import type { ComposerImageAttachment, DraftId } from "../../composerDraftStore";
@@ -70,6 +74,7 @@ export function RightPanelSurfaceContent(props: {
   readonly activeSurfaceId: string | null;
   readonly threadRef: ScopedThreadRef;
   readonly environmentId: EnvironmentId;
+  readonly projectId: ProjectId | null;
   readonly visible: boolean;
   readonly composerDraftTarget: ScopedThreadRef | DraftId;
   readonly keybindings: ResolvedKeybindingsConfig;
@@ -213,17 +218,22 @@ export function RightPanelSurfaceContent(props: {
           }}
         />
       );
-    case "gentl-tasks":
+    case "gentl-tasks": {
+      const projectKey = props.projectId
+        ? scopedProjectKey(scopeProjectRef(threadRef.environmentId, props.projectId))
+        : null;
       return (
         <Suspense fallback={null}>
           <GentlPanel
-            key={scopedThreadKey(threadRef)}
+            key={JSON.stringify([scopedThreadKey(threadRef), projectKey])}
+            projectKey={projectKey}
             threadRef={threadRef}
             composerTarget={props.composerDraftTarget}
             visible={visible}
           />
         </Suspense>
       );
+    }
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
     case "side-chat":
