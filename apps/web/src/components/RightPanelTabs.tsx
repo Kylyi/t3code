@@ -427,7 +427,7 @@ function RightPanelEmptyState(props: {
     ...(props.onAddGentlTasks
       ? [
           {
-            label: msg("Latest tasks"),
+            label: msg("Gentl"),
             icon: ListTodoIcon,
             shortcut: "G",
             available: true,
@@ -628,7 +628,7 @@ function surfaceTitle(
     case "device":
       return surface.title ?? surface.target?.name ?? resolve(msg("Device"));
     case "gentl-tasks":
-      return resolve(msg("Latest tasks"));
+      return resolve(msg("Gentl"));
     case "side-chat":
       return resolve(msg("Side chat"));
     case "preview": {
@@ -1260,7 +1260,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     ...(props.onAddGentlTasks
       ? [
           {
-            label: msg("Latest tasks"),
+            label: msg("Gentl"),
             icon: ListTodoIcon,
             shortcut: "G",
             available: true,

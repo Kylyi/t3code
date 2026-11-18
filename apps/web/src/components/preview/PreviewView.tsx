@@ -112,6 +112,7 @@ interface Props {
   tabId?: string | null;
   configuredUrls?: ReadonlyArray<string> | undefined;
   visible: boolean;
+  contentOnly?: boolean;
   onSendAnnotation?: (
     annotation: PreviewAnnotationPayload,
     image: ComposerImageAttachment | null,
@@ -171,6 +172,7 @@ export function PreviewView({
   tabId: requestedTabId,
   configuredUrls,
   visible,
+  contentOnly = false,
   onSendAnnotation,
 }: Props) {
   const gt = useGT();
@@ -993,78 +995,80 @@ export function PreviewView({
           keybindings={keybindings}
         />
       ) : null}
-      <PreviewChromeRow
-        url={url}
-        loading={loading || serverStreamPending}
-        canGoBack={canGoBack && !serverInputDisabled}
-        canGoForward={canGoForward && !serverInputDisabled}
-        refreshDisabled={refreshDisabled || serverInputDisabled}
-        inputDisabled={serverInputDisabled}
-        urlInputRef={urlInputRef}
-        onBack={handleBack}
-        onForward={handleForward}
-        onRefresh={handleRefresh}
-        onStopLoading={handleStopLoading}
-        onSubmit={(next) => void handleSubmitUrl(next)}
-        onOpenInBrowser={tabId ? handleOpenInBrowser : undefined}
-        onCapture={previewBridge && tabId && !isServerTab ? handleCapture : undefined}
-        captureDisabled={!desktopOverlay || isUnreachable}
-        recording={recordingRuntimeTabId !== null}
-        onPictureInPicture={
-          tabId && (isServerTab || previewBridge) ? handlePictureInPicture : undefined
-        }
-        pictureInPicture={miniPlayerTabId === tabId}
-        pictureInPictureDisabled={
-          isUnreachable || (!isServerTab && !desktopOverlay?.hasWebContents)
-        }
-        onPickElement={previewBridge && tabId && !isServerTab ? handlePickElement : undefined}
-        pickActive={pickActive}
-        pickDisabled={!tabId || isUnreachable}
-        pickDisabledReason={
-          isUnreachable
-            ? gt("Page didn't load. Pick is unavailable until the page renders")
-            : undefined
-        }
-        leadingActions={
-          activeProfileId !== browserDefaults.profileId ? (
-            <Tooltip>
-              <TooltipTrigger render={<Badge variant="outline" className="max-w-28 shrink-0" />}>
-                <span className="truncate">{activeProfileName}</span>
-              </TooltipTrigger>
-              <TooltipPopup side="top">{activeProfileName}</TooltipPopup>
-            </Tooltip>
-          ) : null
-        }
-        trailingActions={
-          moreMenuActions ? (
-            <PreviewMoreMenu
-              enabled={
-                runtimeTabId !== null &&
-                (serverOwnsRendering || (desktopOverlay?.hasWebContents ?? false))
-              }
-              actions={moreMenuActions}
-              {...(moveTarget
-                ? { move: { label: moveLabel, onMove: () => void handleMoveTab() } }
-                : {})}
-              profileName={activeProfileName}
-              findShortcutLabel={shortcutLabelForCommand(keybindings, "preview.find", {
-                context: { previewFocus: true },
-              })}
-              zoomFactor={
-                serverOwnsRendering ? serverZoomFactor : (desktopOverlay?.zoomFactor ?? 1)
-              }
-              colorScheme={
-                serverOwnsRendering
-                  ? (snapshot?.colorScheme ?? "system")
-                  : (desktopOverlay?.colorScheme ?? "system")
-              }
-              deviceToolbarVisible={viewport._tag !== "fill"}
-              onToggleDeviceToolbar={handleToggleDeviceToolbar}
-              nativePictureInPicture={desktopOverlay?.pictureInPicture ?? false}
-            />
-          ) : null
-        }
-      />
+      {!contentOnly && (
+        <PreviewChromeRow
+          url={url}
+          loading={loading || serverStreamPending}
+          canGoBack={canGoBack && !serverInputDisabled}
+          canGoForward={canGoForward && !serverInputDisabled}
+          refreshDisabled={refreshDisabled || serverInputDisabled}
+          inputDisabled={serverInputDisabled}
+          urlInputRef={urlInputRef}
+          onBack={handleBack}
+          onForward={handleForward}
+          onRefresh={handleRefresh}
+          onStopLoading={handleStopLoading}
+          onSubmit={(next) => void handleSubmitUrl(next)}
+          onOpenInBrowser={tabId ? handleOpenInBrowser : undefined}
+          onCapture={previewBridge && tabId && !isServerTab ? handleCapture : undefined}
+          captureDisabled={!desktopOverlay || isUnreachable}
+          recording={recordingRuntimeTabId !== null}
+          onPictureInPicture={
+            tabId && (isServerTab || previewBridge) ? handlePictureInPicture : undefined
+          }
+          pictureInPicture={miniPlayerTabId === tabId}
+          pictureInPictureDisabled={
+            isUnreachable || (!isServerTab && !desktopOverlay?.hasWebContents)
+          }
+          onPickElement={previewBridge && tabId && !isServerTab ? handlePickElement : undefined}
+          pickActive={pickActive}
+          pickDisabled={!tabId || isUnreachable}
+          pickDisabledReason={
+            isUnreachable
+              ? gt("Page didn't load. Pick is unavailable until the page renders")
+              : undefined
+          }
+          leadingActions={
+            activeProfileId !== browserDefaults.profileId ? (
+              <Tooltip>
+                <TooltipTrigger render={<Badge variant="outline" className="max-w-28 shrink-0" />}>
+                  <span className="truncate">{activeProfileName}</span>
+                </TooltipTrigger>
+                <TooltipPopup side="top">{activeProfileName}</TooltipPopup>
+              </Tooltip>
+            ) : null
+          }
+          trailingActions={
+            moreMenuActions ? (
+              <PreviewMoreMenu
+                enabled={
+                  runtimeTabId !== null &&
+                  (serverOwnsRendering || (desktopOverlay?.hasWebContents ?? false))
+                }
+                actions={moreMenuActions}
+                {...(moveTarget
+                  ? { move: { label: moveLabel, onMove: () => void handleMoveTab() } }
+                  : {})}
+                profileName={activeProfileName}
+                findShortcutLabel={shortcutLabelForCommand(keybindings, "preview.find", {
+                  context: { previewFocus: true },
+                })}
+                zoomFactor={
+                  serverOwnsRendering ? serverZoomFactor : (desktopOverlay?.zoomFactor ?? 1)
+                }
+                colorScheme={
+                  serverOwnsRendering
+                    ? (snapshot?.colorScheme ?? "system")
+                    : (desktopOverlay?.colorScheme ?? "system")
+                }
+                deviceToolbarVisible={viewport._tag !== "fill"}
+                onToggleDeviceToolbar={handleToggleDeviceToolbar}
+                nativePictureInPicture={desktopOverlay?.pictureInPicture ?? false}
+              />
+            ) : null
+          }
+        />
+      )}
 
       <div ref={serverBodyRef} className="relative min-h-0 flex-1 overflow-hidden">
         {runtimeTabId && snapshot && isServerTab ? (
@@ -1105,6 +1109,7 @@ export function PreviewView({
                     : null
                 }
                 visible={visible}
+                contentOnly={contentOnly}
                 onFirstFrame={() => setServerFrameTabId(runtimeTabId)}
                 onControl={(control) =>
                   setServerControlledTabId(control?.controller === "you" ? runtimeTabId : null)

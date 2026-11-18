@@ -29,6 +29,7 @@ interface OpenPreviewSessionInput<E> {
   zoomFactor?: PreviewZoomFactor;
   colorScheme?: PreviewAppearancePreference;
   runtime?: PreviewRuntime;
+  reveal?: boolean;
 }
 
 export async function openPreviewSession<E>(
@@ -47,6 +48,7 @@ export async function openPreviewSession<E>(
     input: {
       threadId: input.threadRef.threadId,
       ...(input.url === undefined ? {} : { url: input.url }),
+      ...(input.reveal === undefined ? {} : { reveal: input.reveal }),
       viewport: input.viewport ?? defaults.viewport,
       profileId: input.profileId ?? defaults.profileId,
       ...(runtime === undefined || runtime === "desktop"

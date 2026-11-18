@@ -54,12 +54,17 @@ export function useRightPanelSurfaceClose(input: {
 
   const releaseSurfaceResources = (ref: ScopedThreadRef, surface: RightPanelSurface) => {
     // Without preview access, server state remains until an authorized close or restart.
-    if (canOperatePreview && surface.kind === "preview" && surface.resourceId) {
+    if (
+      canOperatePreview &&
+      (surface.kind === "preview" || surface.kind === "gentl-tasks") &&
+      surface.resourceId
+    ) {
       void closePreviewSession({
         closePreview,
         snapshot: previewState.sessions[surface.resourceId] ?? null,
         tabId: surface.resourceId,
         threadRef: ref,
+        remember: surface.kind !== "gentl-tasks",
       });
     }
     if (

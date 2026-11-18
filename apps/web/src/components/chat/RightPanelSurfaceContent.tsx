@@ -1,4 +1,3 @@
-import { GentlTasksPanel } from "./GentlTasksPanel";
 import { useGT } from "gt-react";
 import type {
   EditorId,
@@ -31,6 +30,9 @@ import { ThreadPullRequestsPanel } from "../pullRequest/ThreadPullRequestsPanel"
 
 const PreviewPanel = lazy(() =>
   import("../preview/PreviewPanel").then((module) => ({ default: module.PreviewPanel })),
+);
+const GentlPanel = lazy(() =>
+  import("./GentlPanel").then((module) => ({ default: module.GentlPanel })),
 );
 const DiffPanel = lazy(() => import("../DiffPanel"));
 const DevicePanel = lazy(() =>
@@ -212,7 +214,16 @@ export function RightPanelSurfaceContent(props: {
         />
       );
     case "gentl-tasks":
-      return <GentlTasksPanel visible={visible} />;
+      return (
+        <Suspense fallback={null}>
+          <GentlPanel
+            key={scopedThreadKey(threadRef)}
+            threadRef={threadRef}
+            resourceId={surface.resourceId}
+            visible={visible}
+          />
+        </Suspense>
+      );
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
     case "side-chat":

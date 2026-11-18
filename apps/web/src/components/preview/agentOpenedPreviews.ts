@@ -67,11 +67,7 @@ export function followPreviewSessions(threadRef: ScopedThreadRef, state: ThreadP
   useRightPanelStore.getState().reconcileBrowserSurfaces(
     threadRef,
     sessions.map((session) => session.tabId),
-    new Set(
-      sessions
-        .filter((session) => session.runtime === "server" && session.reveal === false)
-        .map((session) => session.tabId),
-    ),
+    new Set(sessions.filter((session) => session.reveal === false).map((session) => session.tabId)),
   );
   const miniPlayer = usePreviewMiniPlayerStore.getState();
   const source = miniPlayer.byThreadKey[scopedThreadKey(threadRef)]?.source;
