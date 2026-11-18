@@ -5,6 +5,7 @@ import { readDesktopPrimaryBearerToken } from "../../environments/primary/deskto
 export interface GentlOption {
   id: string;
   name: string;
+  style?: { color?: string; backgroundColor?: string; icon?: string } | null;
 }
 export interface GentlWorkspace extends GentlOption {
   target: string;
@@ -20,12 +21,13 @@ export interface GentlBoardMetadata {
   types: GentlOption[];
   tags: GentlOption[];
   users: GentlOption[];
+  sprints?: GentlOption[];
   permissions: { createTasks: boolean; updateTasks: boolean; deleteTasks: boolean };
 }
 export interface GentlTask extends GentlOption {
   uuid: string;
   boardId: string;
-  status?: (GentlOption & { style?: { color?: string } | null }) | null;
+  status?: GentlOption | null;
   priority?: GentlOption | null;
   type?: GentlOption | null;
   assignedTo?: {
@@ -37,6 +39,7 @@ export interface GentlTask extends GentlOption {
 export interface GentlBody {
   markdown: string;
   truncated: boolean;
+  originalImages?: Record<string, string>;
   attachments: {
     id: string;
     label: string;

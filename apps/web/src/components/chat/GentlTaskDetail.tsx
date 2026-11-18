@@ -1,19 +1,12 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { T, useGT } from "gt-react";
-import {
-  ArrowLeftIcon,
-  BotIcon,
-  PaperclipIcon,
-  PencilIcon,
-  ReplyIcon,
-  SendIcon,
-  Trash2Icon,
-} from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { ArrowLeftIcon, BotIcon, PencilIcon, ReplyIcon, SendIcon, Trash2Icon } from "lucide-react";
+import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 
 import { useComposerDraftStore, type DraftId } from "../../composerDraftStore";
 import { dispatchSnapShotComposerFocus } from "../../lib/desktopSnapShot";
-import { PullRequestMarkdown } from "../pullRequest/PullRequestMarkdown";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -25,7 +18,6 @@ import {
 } from "../ui/alert-dialog";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import {
@@ -37,11 +29,10 @@ import {
   type GentlComment,
   type GentlComments,
   type GentlDetail,
-  type GentlOption,
   type GentlTaskScope,
   type GentlWorkspace,
 } from "./gentlClient";
-import { GentlLoadState, GentlPicker, GentlStatus } from "./gentlControls";
+import { GentlLoadState, GentlPicker, GentlBadge, GentlChoices } from "./gentlControls";
 
 interface DetailProps {
   taskScope: GentlTaskScope;
@@ -145,37 +136,41 @@ function GentlTaskContent({
           <h2 className="min-w-0 break-words text-lg font-semibold">{task.name}</h2>
           <span className="shrink-0 text-sm tabular-nums text-muted-foreground">#{task.uuid}</span>
         </div>
-        {!editing && (
-          <div className="space-y-2">
-            <div className="flex flex-wrap gap-1.5">
-              {task.status && <GentlStatus status={task.status} />}
-              {task.priority && <Badge variant="outline">{task.priority.name}</Badge>}
-              {task.type && <Badge variant="outline">{task.type.name}</Badge>}
-              {task.dueDate && (
-                <Badge variant="outline">{new Date(task.dueDate).toLocaleDateString()}</Badge>
-              )}
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          {!editing && (
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap gap-1.5">
+                {task.status && <GentlBadge option={task.status} />}
+                {task.priority && <GentlBadge option={task.priority} />}
+                {task.type && <GentlBadge option={task.type} />}
+                {task.dueDate && (
+                  <Badge variant="outline">{new Date(task.dueDate).toLocaleDateString()}</Badge>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {task.assignedTo?.map(
+                  ({ user }) =>
+                    user && (
+                      <Badge key={user.id} variant="secondary">
+                        {[user.firstName, user.lastName].filter(Boolean).join(" ")}
+                      </Badge>
+                    ),
+                )}
+                {task.tags?.map((tag) => (
+                  <Badge key={tag.id} variant="outline">
+                    {tag.name}
+                  </Badge>
+                ))}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {task.assignedTo?.map(
-                ({ user }) =>
-                  user && (
-                    <Badge key={user.id} variant="secondary">
-                      {[user.firstName, user.lastName].filter(Boolean).join(" ")}
-                    </Badge>
-                  ),
-              )}
-              {task.tags?.map((tag) => (
-                <Badge key={tag.id} variant="outline">
-                  {tag.name}
-                </Badge>
-              ))}
-            </div>
+          )}
+          <div className="ml-auto">
+            <Button size="sm" onClick={startImplementation}>
+              <BotIcon />
+              <T>Start implementation</T>
+            </Button>
           </div>
-        )}
-        <Button size="sm" onClick={startImplementation}>
-          <BotIcon />
-          <T>Start implementation</T>
-        </Button>
+        </div>
       </header>
       <div className="space-y-5 p-3">
         {editing && metadata ? (
@@ -365,14 +360,14 @@ function GentlEditTask({
           />
         </Field>
       </div>
-      <EditChoices
+      <GentlChoices
         label={gt("Assignees")}
         options={metadata.users}
         selected={assignees}
         onChange={setAssignees}
         disabled={saving}
       />
-      <EditChoices
+      <GentlChoices
         label={gt("Tags")}
         options={metadata.tags}
         selected={tags}
@@ -423,43 +418,43 @@ function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   );
 }
 
-function EditChoices({
-  label,
-  options,
-  selected,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  options: GentlOption[];
-  selected: string[];
-  onChange: (value: string[]) => void;
-  disabled: boolean;
-}) {
-  if (!options.length) return null;
-  return (
-    <fieldset className="space-y-1" disabled={disabled}>
-      <legend className="text-sm">{label}</legend>
-      <div className="flex max-h-32 flex-wrap gap-x-3 gap-y-2 overflow-auto rounded-lg border border-border p-2">
-        {options.map(({ id, name }) => (
-          <label key={id} className="flex items-center gap-1.5 text-sm">
-            <Checkbox
-              checked={selected.includes(id)}
-              onCheckedChange={(checked) =>
-                onChange(checked ? [...selected, id] : selected.filter((item) => item !== id))
-              }
-            />
-            <span>{name}</span>
-          </label>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
+const GENTL_MARKDOWN_PLUGINS = [remarkGfm];
+const originalImage = /^data:image\/(?:png|jpeg|gif|webp|avif|bmp|x-icon);base64,/i;
+
+const TaskMarkdownContext = createContext<{
+  body: GentlBody;
+  scope: GentlTaskScope;
+  commentId: string | undefined;
+} | null>(null);
+
+const GENTL_MARKDOWN_COMPONENTS: Components = {
+  a: function TaskLink({ href, children }) {
+    const context = useContext(TaskMarkdownContext);
+    const id = href?.match(/^#gentl-attachment-([a-f0-9]{24})$/)?.[1];
+    const attachment = id ? context?.body.attachments.find((item) => item.id === id) : undefined;
+    if (attachment?.kind === "image" && context) {
+      return (
+        <TaskImage
+          attachment={attachment}
+          source={context.body.originalImages?.[attachment.id]}
+          scope={context.scope}
+          commentId={context.commentId}
+        />
+      );
+    }
+    const destination = attachment?.url ?? href;
+    return destination && /^https?:\/\//i.test(destination) ? (
+      <a className="text-primary underline" href={destination} target="_blank" rel="noreferrer">
+        {children}
+      </a>
+    ) : (
+      <span>{children}</span>
+    );
+  },
+};
 
 function TaskBody({
   body,
-  threadRef,
   scope,
   commentId,
 }: {
@@ -469,78 +464,63 @@ function TaskBody({
   commentId?: string;
 }) {
   return (
-    <div className="space-y-2 text-sm">
-      {body.markdown && (
-        <PullRequestMarkdown text={body.markdown} cwd="" environmentId={threadRef.environmentId} />
-      )}
+    <div className="chat-markdown min-w-0 space-y-2 wrap-anywhere text-sm">
+      <TaskMarkdownContext.Provider value={{ body, scope, commentId }}>
+        <ReactMarkdown
+          remarkPlugins={GENTL_MARKDOWN_PLUGINS}
+          components={GENTL_MARKDOWN_COMPONENTS}
+        >
+          {body.markdown}
+        </ReactMarkdown>
+      </TaskMarkdownContext.Provider>
       {body.truncated && (
         <p className="text-xs text-muted-foreground">
           <T>Preview truncated.</T>
         </p>
       )}
-      {body.attachments.map((attachment) => (
-        <TaskAttachment
-          key={attachment.id}
-          attachment={attachment}
-          scope={scope}
-          commentId={commentId}
-        />
-      ))}
     </div>
   );
 }
 
-function TaskAttachment({
+function TaskImage({
   attachment,
+  source,
   scope,
   commentId,
 }: {
   attachment: GentlBody["attachments"][number];
+  source: string | undefined;
   scope: GentlTaskScope;
-  commentId?: string | undefined;
+  commentId: string | undefined;
 }) {
-  const [show, setShow] = useState(false);
+  const fileId = attachment.url?.match(/^\/api\/fs\/([a-zA-Z0-9_-]+)\?mustBeInDb=true$/)?.[1];
+  const direct =
+    source && originalImage.test(source)
+      ? source
+      : attachment.url?.startsWith("https://")
+        ? attachment.url
+        : undefined;
   const media = useGentlData<{ dataUrl: string }>(
-    show ? { action: "media", ...scope, attachmentId: attachment.id, commentId } : null,
+    !direct && (fileId || attachment.previewable)
+      ? { action: "media", ...scope, attachmentId: attachment.id, commentId, fileId }
+      : null,
   );
-  if (media.value?.dataUrl.startsWith("data:image/webp;base64,")) {
-    return (
-      <img
-        className="max-h-64 max-w-full rounded-md"
-        alt={attachment.label}
-        src={media.value.dataUrl}
-      />
-    );
-  }
-  if (attachment.previewable) {
-    return (
-      <Button
-        size="xs"
-        variant="outline"
-        disabled={show && !media.failed}
-        onClick={() => {
-          if (media.failed) media.retry();
-          setShow(true);
-        }}
-      >
-        <PaperclipIcon />
-        {attachment.label}
-      </Button>
-    );
-  }
-  if (attachment.url?.startsWith("https://")) {
-    return (
-      <a
-        className="block break-all underline"
-        href={attachment.url}
-        target="_blank"
-        rel="noreferrer"
-      >
-        {attachment.label}
-      </a>
-    );
-  }
-  return <div className="break-words text-muted-foreground">{attachment.label}</div>;
+  const src =
+    direct ??
+    (media.value?.dataUrl && originalImage.test(media.value.dataUrl)
+      ? media.value.dataUrl
+      : undefined);
+  return src ? (
+    <img
+      className="my-2 block h-auto max-w-full rounded-md"
+      alt={attachment.label}
+      src={src}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+    />
+  ) : (
+    <span className="text-muted-foreground">{attachment.label}</span>
+  );
 }
 
 function GentlTaskComments({

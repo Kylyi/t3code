@@ -1,13 +1,22 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { T, useGT } from "gt-react";
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  ListFilterIcon,
+  SearchIcon,
+} from "lucide-react";
 import { useState } from "react";
 
 import type { DraftId } from "../../composerDraftStore";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { GentlLoadState, GentlPicker, GentlStatus } from "./gentlControls";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
+import { useDebouncedValue } from "../../state/queries";
+import { GentlBoardFilters, type GentlTaskFilters } from "./GentlBoardFilters";
+import { GentlLoadState, GentlPicker, GentlBadge } from "./gentlControls";
 import { GentlTaskDetail } from "./GentlTaskDetail";
 import {
   gentlRequest,
@@ -129,6 +138,22 @@ function GentlBoardTasks({
 }) {
   const gt = useGT();
   const [page, setPage] = useState(0);
+  const [search, setSearch] = useState("");
+  const query = useDebouncedValue(search.trim(), 220);
+  const [filters, setFilters] = useState<GentlTaskFilters>({});
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const viewer = useGentlData<{ userId: string | null }>(
+    filtersOpen ? { action: "viewer", ...scope } : null,
+  );
+  const filtered =
+    filters.sprintId !== undefined ||
+    !!(
+      filters.userIds?.length ||
+      filters.tagIds?.length ||
+      filters.statusId ||
+      filters.priorityId ||
+      filters.typeId
+    );
   const [revision, setRevision] = useState(0);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -141,7 +166,7 @@ function GentlBoardTasks({
     boardId: board.id,
   });
   const feed = useGentlData<{ tasks: GentlTask[] }>(
-    { action: "tasks", ...scope, boardId: board.id, page },
+    { action: "tasks", ...scope, boardId: board.id, page, search: query, filters },
     revision,
   );
   const refresh = () => setRevision((count) => count + 1);
@@ -164,10 +189,34 @@ function GentlBoardTasks({
   return (
     <>
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <h2 className="text-sm font-medium">
-          <T>Tasks</T>
-        </h2>
+        <div className="min-w-0 flex-1">
+          <InputGroup>
+            <InputGroupAddon>
+              <SearchIcon />
+            </InputGroupAddon>
+            <InputGroupInput
+              type="search"
+              aria-label={gt("Search tasks")}
+              placeholder={gt("Search tasks")}
+              value={search}
+              maxLength={200}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(0);
+              }}
+            />
+          </InputGroup>
+        </div>
         <div className="flex gap-1">
+          <Button
+            size="icon-xs"
+            variant={filtered ? "default" : "outline"}
+            aria-label={gt("Filters")}
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((open) => !open)}
+          >
+            <ListFilterIcon />
+          </Button>
           {metadata.value?.permissions.createTasks && (
             <Button size="xs" variant="outline" onClick={() => setCreating(!creating)}>
               <PlusIcon />
@@ -179,6 +228,20 @@ function GentlBoardTasks({
           </Button>
         </div>
       </div>
+      {filtersOpen &&
+        (metadata.value ? (
+          <GentlBoardFilters
+            metadata={metadata.value}
+            viewerId={viewer.value?.userId}
+            value={filters}
+            onChange={(next) => {
+              setFilters(next);
+              setPage(0);
+            }}
+          />
+        ) : (
+          <GentlLoadState {...metadata} />
+        ))}
       {creating && (
         <form
           className="flex flex-wrap gap-2 border-b border-border p-3"
@@ -224,7 +287,7 @@ function GentlBoardTasks({
           <GentlLoadState {...feed} />
         ) : feed.value.tasks.length === 0 ? (
           <p className="p-3 text-sm text-muted-foreground">
-            <T>No tasks yet.</T>
+            {query || filtered ? <T>No matching tasks.</T> : <T>No tasks yet.</T>}
           </p>
         ) : (
           <ul className="divide-y divide-border">
@@ -242,9 +305,9 @@ function GentlBoardTasks({
                     <span className="min-w-0 break-words font-medium">{task.name}</span>
                   </span>
                   <span className="flex flex-wrap items-center gap-1.5">
-                    {task.status && <GentlStatus status={task.status} />}
-                    {task.priority && <Badge variant="outline">{task.priority.name}</Badge>}
-                    {task.type && <Badge variant="outline">{task.type.name}</Badge>}
+                    {task.status && <GentlBadge option={task.status} />}
+                    {task.priority && <GentlBadge option={task.priority} />}
+                    {task.type && <GentlBadge option={task.type} />}
                     {task.assignedTo?.map(
                       ({ user }) =>
                         user && (

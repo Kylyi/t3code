@@ -4,6 +4,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Config from "effect/Config";
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
+import * as Digest from "effect/crypto/Digest";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
@@ -30,16 +31,34 @@ export const GentlCommand = z.discriminatedUnion("action", [
   z.object({ action: z.literal("workspaces") }),
   z.object({ action: z.literal("boards"), ...scope }),
   z.object({ action: z.literal("board"), ...scope, boardId: id }),
+  z.object({ action: z.literal("viewer"), ...scope }),
   z.object({
     action: z.literal("tasks"),
     ...scope,
     boardId: id,
     page: z.number().int().min(0).max(2000),
+    search: z.string().trim().max(200).optional(),
+    filters: z
+      .object({
+        sprintId: id.nullable().optional(),
+        userIds: z.array(id).max(100).optional(),
+        tagIds: z.array(id).max(100).optional(),
+        statusId: id.optional(),
+        priorityId: id.optional(),
+        typeId: id.optional(),
+      })
+      .optional(),
   }),
   z.object({ action: z.literal("detail"), ...task }),
   z.object({ action: z.literal("description"), ...task }),
   z.object({ action: z.literal("comments"), ...task, cursor }),
-  z.object({ action: z.literal("media"), ...task, attachmentId: id, commentId: id.optional() }),
+  z.object({
+    action: z.literal("media"),
+    ...task,
+    attachmentId: id,
+    commentId: id.optional(),
+    fileId: id.regex(/^[a-zA-Z0-9_-]+$/).optional(),
+  }),
   z.object({ action: z.literal("update"), ...task, changes: z.object(patch) }),
   z.object({
     action: z.literal("create"),
@@ -176,6 +195,71 @@ const call = Effect.fn("GentlTasks.call")(function* (
   return result.structuredContent;
 }, Effect.timeout("15 seconds"));
 
+const imageMime = /^image\/(?:png|jpeg|gif|webp|avif|bmp|x-icon)$/i;
+const attachmentSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  label: z.string(),
+  previewable: z.boolean().optional(),
+  url: z.string().optional(),
+});
+const portableBody = z.object({ attachments: z.array(attachmentSchema) }).passthrough();
+type PortableBody = Zod.infer<typeof portableBody>;
+
+/** The portable preview names embedded images by hash. Recover the matching originals from
+ * the stored Markdown without treating arbitrary HTML or other data URLs as images. */
+const withOriginalImages = Effect.fn("GentlTasks.originalImages")(function* (
+  body: PortableBody,
+  raw: string | null | undefined,
+) {
+  if (!raw) return body;
+  const ids = new Set(
+    body.attachments.filter((file) => file.kind === "image" && !file.url).map((file) => file.id),
+  );
+  if (!ids.size) return body;
+  const originalImages: Record<string, string> = {};
+  const digest = yield* Digest.Digest;
+  for (const [source] of raw.matchAll(
+    /data:image\/(?:png|jpeg|gif|webp|avif|bmp|x-icon);base64,[a-z0-9+/=]+/gi,
+  )) {
+    const hash = yield* digest.digest(Digest.sha256, Buffer.from(`image\0${source}`));
+    const key = Buffer.from(hash).toString("hex").slice(0, 24);
+    if (ids.has(key)) originalImages[key] = source;
+  }
+  return { ...body, originalImages };
+});
+
+const readImageFile = Effect.fn("GentlTasks.readImageFile")(function* (
+  target: Target,
+  instanceId: string,
+  fileId: string,
+) {
+  const url = yield* attempt(() =>
+    targetUrl(target, `/api/fs/${encodeURIComponent(fileId)}?mustBeInDb=true`),
+  );
+  const response = yield* HttpClient.execute(
+    HttpClientRequest.get(url, {
+      headers: { ...authHeaders(target), "x-instance-id": instanceId },
+    }),
+  );
+  const mime = response.headers["content-type"]?.split(";")[0] ?? "";
+  const limit = 30 * 1024 * 1024;
+  if (
+    response.status !== 200 ||
+    !imageMime.test(mime) ||
+    Number(response.headers["content-length"]) > limit
+  ) {
+    return { failure: "missing" };
+  }
+  const bytes = yield* response.arrayBuffer;
+  if (bytes.byteLength > limit) return { failure: "missing" };
+  return { dataUrl: `data:${mime};base64,${Buffer.from(bytes).toString("base64")}` };
+}, Effect.timeout("15 seconds"));
+
+const enumeratorFields = { select: { id: true, name: true, style: true } };
+const hasEmbeddedImages = (body: PortableBody) =>
+  body.attachments.some((file) => file.kind === "image" && !file.url);
+
 const PAGE_SIZE = 50;
 
 export const runGentlCommand = Effect.fn("GentlTasks.run")(
@@ -202,9 +286,44 @@ export const runGentlCommand = Effect.fn("GentlTasks.run")(
         return yield* invoke("get_task_tracking_context", {});
       case "board":
         return yield* invoke("get_board_task_metadata", { boardId: command.boardId });
-      case "tasks":
+      case "viewer": {
+        const data = yield* invoke("get_platform_context", {});
+        const viewer = z
+          .object({ caller: z.object({ userId: z.string().nullable().optional() }) })
+          .safeParse(data);
+        return viewer.success ? { userId: viewer.data.caller.userId ?? null } : data;
+      }
+      case "tasks": {
+        const { filters, search } = command;
+        const serial = search?.match(/^#?(\d+)$/)?.[1];
         return yield* invoke("query_tasks", {
-          where: { boardId: command.boardId, archivedAt: null, isTemplate: false },
+          where: {
+            boardId: command.boardId,
+            archivedAt: null,
+            isTemplate: false,
+            ...(search
+              ? {
+                  OR: [
+                    { name: { contains: search, mode: "insensitive" } },
+                    ...(serial ? [{ uuid: serial }] : []),
+                  ],
+                }
+              : {}),
+            ...(filters?.sprintId === null
+              ? { sprints: { none: {} } }
+              : filters?.sprintId
+                ? { sprints: { some: { id: filters.sprintId } } }
+                : {}),
+            ...(filters?.userIds?.length
+              ? { assignedTo: { some: { userId: { in: filters.userIds } } } }
+              : {}),
+            ...(filters?.tagIds?.length
+              ? { AND: filters.tagIds.map((id) => ({ tags: { some: { id } } })) }
+              : {}),
+            ...(filters?.statusId ? { statusId: filters.statusId } : {}),
+            ...(filters?.priorityId ? { priorityId: filters.priorityId } : {}),
+            ...(filters?.typeId ? { typeId: filters.typeId } : {}),
+          },
           orderBy: [{ position: "asc" }, { id: "asc" }],
           take: PAGE_SIZE,
           skip: command.page * PAGE_SIZE,
@@ -213,28 +332,103 @@ export const runGentlCommand = Effect.fn("GentlTasks.run")(
             name: true,
             uuid: true,
             dueDate: true,
-            status: { select: { id: true, name: true, style: true } },
-            priority: { select: { id: true, name: true } },
-            type: { select: { id: true, name: true } },
+            status: enumeratorFields,
+            priority: enumeratorFields,
+            type: enumeratorFields,
             assignedTo: {
               select: { user: { select: { id: true, firstName: true, lastName: true } } },
             },
           },
         });
-      case "detail":
-        return yield* invoke("get_task_preview", { taskId: command.taskId });
+      }
+      case "detail": {
+        const value = yield* invoke("get_task_preview", { taskId: command.taskId });
+        const detail = z
+          .object({ task: z.record(z.string(), z.unknown()), description: portableBody })
+          .safeParse(value);
+        if (!detail.success) return value;
+        const metadata = yield* invoke("query_tasks", {
+          where: { id: command.taskId },
+          take: 1,
+          select: {
+            priority: enumeratorFields,
+            type: enumeratorFields,
+            ...(hasEmbeddedImages(detail.data.description) ? { description: true } : {}),
+          },
+        }).pipe(Effect.orElseSucceed(() => null));
+        const row = z
+          .object({
+            tasks: z.array(
+              z.object({
+                description: z.string().nullable().optional(),
+                priority: z.unknown(),
+                type: z.unknown(),
+              }),
+            ),
+          })
+          .safeParse(metadata);
+        const styles = row.success ? row.data.tasks[0] : undefined;
+        return {
+          task: {
+            ...detail.data.task,
+            ...(styles ? { priority: styles.priority, type: styles.type } : {}),
+          },
+          description: yield* withOriginalImages(detail.data.description, styles?.description),
+        };
+      }
       case "description":
         return yield* invoke("query_tasks", {
           where: { id: command.taskId },
           take: 1,
           select: { description: true },
         });
-      case "comments":
-        return yield* invoke("list_task_preview_comments", {
+      case "comments": {
+        const value = yield* invoke("list_task_preview_comments", {
           taskId: command.taskId,
           cursor: command.cursor,
         });
+        const page = z
+          .object({
+            comments: z.array(z.object({ id: z.string(), body: portableBody }).passthrough()),
+          })
+          .passthrough()
+          .safeParse(value);
+        if (!page.success) return value;
+        const embedded = page.data.comments.filter((comment) => hasEmbeddedImages(comment.body));
+        if (!embedded.length) return value;
+        const raw = yield* invoke("query_tasks", {
+          where: { id: command.taskId },
+          take: 1,
+          select: {
+            comments: {
+              where: { id: { in: embedded.map((comment) => comment.id) } },
+              select: { id: true, message: true },
+            },
+          },
+        }).pipe(Effect.orElseSucceed(() => null));
+        const rows = z
+          .object({
+            tasks: z.array(
+              z.object({
+                comments: z.array(z.object({ id: z.string(), message: z.string().nullable() })),
+              }),
+            ),
+          })
+          .safeParse(raw);
+        const byId = new Map(
+          rows.success ? rows.data.tasks[0]?.comments.map(({ id, message }) => [id, message]) : [],
+        );
+        return {
+          ...page.data,
+          comments: yield* Effect.forEach(page.data.comments, (comment) =>
+            withOriginalImages(comment.body, byId.get(comment.id)).pipe(
+              Effect.map((body) => ({ ...comment, body })),
+            ),
+          ),
+        };
+      }
       case "media":
+        if (command.fileId) return yield* readImageFile(target, command.instanceId, command.fileId);
         return yield* invoke("get_task_preview_media", {
           taskId: command.taskId,
           attachmentId: command.attachmentId,

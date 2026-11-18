@@ -1,7 +1,9 @@
 import { T } from "gt-react";
+import { BugIcon, Columns2Icon, MinusIcon, TriangleAlertIcon } from "lucide-react";
 import type { CSSProperties } from "react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import type { GentlOption } from "./gentlClient";
 
@@ -61,17 +63,72 @@ export function GentlLoadState({ failed, retry }: { failed: boolean; retry: () =
   );
 }
 
-export function GentlStatus({
-  status,
-}: {
-  status: GentlOption & { style?: { color?: string } | null };
-}) {
-  const color = status.style?.color;
+function GentlBadgeIcon({ icon }: { icon: string }) {
+  switch (icon) {
+    case "material-symbols:warning-rounded":
+      return <TriangleAlertIcon aria-hidden />;
+    case "mdi:bug-outline":
+      return <BugIcon aria-hidden />;
+    case "octicon:dash-16":
+      return <MinusIcon aria-hidden />;
+    case "lucide:columns-2":
+      return <Columns2Icon aria-hidden />;
+    default:
+      return null;
+  }
+}
+
+export function GentlBadge({ option }: { option: GentlOption }) {
+  const color = option.style?.color;
+  const background = option.style?.backgroundColor;
+  const icon = option.style?.icon;
   const style =
-    color && /^#[0-9a-f]{6}$/i.test(color) ? ({ "--label": color } as CSSProperties) : undefined;
+    color && /^#[0-9a-f]{6}$/i.test(color)
+      ? ({
+          "--label": color,
+          ...(background && /^(?:#[0-9a-f]{6}|rgba?\([\d.,% ]+\))$/i.test(background)
+            ? { backgroundColor: background }
+            : {}),
+        } as CSSProperties)
+      : undefined;
   return (
     <Badge variant={style ? "label" : "secondary"} style={style}>
-      {status.name}
+      {icon && <GentlBadgeIcon icon={icon} />}
+      {option.name}
     </Badge>
+  );
+}
+
+export function GentlChoices({
+  label,
+  options,
+  selected,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  options: GentlOption[];
+  selected: string[];
+  onChange: (value: string[]) => void;
+  disabled: boolean;
+}) {
+  if (!options.length) return null;
+  return (
+    <fieldset className="space-y-1" disabled={disabled}>
+      <legend className="text-sm">{label}</legend>
+      <div className="flex max-h-32 flex-wrap gap-x-3 gap-y-2 overflow-auto rounded-lg border border-border p-2">
+        {options.map(({ id, name }) => (
+          <label key={id} className="flex items-center gap-1.5 text-sm">
+            <Checkbox
+              checked={selected.includes(id)}
+              onCheckedChange={(checked) =>
+                onChange(checked ? [...selected, id] : selected.filter((item) => item !== id))
+              }
+            />
+            <span>{name}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
