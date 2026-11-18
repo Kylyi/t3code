@@ -1,5 +1,6 @@
 import * as Mime from "effect/http/Mime";
 import {
+  AuthAccessWriteScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   EnvironmentHttpApi,
@@ -58,6 +59,7 @@ import {
   MCP_HTTP_PATH,
 } from "./httpCors.ts";
 import { requestUrl } from "./requestUrl.ts";
+import { GentlCommand, runGentlCommand } from "./gentlTasks.ts";
 
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -322,7 +324,10 @@ function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
 const authenticateRawRouteWithScope =
   /* Request instrumentation already owns the span; keep this helper in that context. */
   Effect.fnUntraced(function* (
-    scope: typeof AuthOrchestrationReadScope | typeof AuthOrchestrationOperateScope,
+    scope:
+      | typeof AuthAccessWriteScope
+      | typeof AuthOrchestrationReadScope
+      | typeof AuthOrchestrationOperateScope,
   ) {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
@@ -341,6 +346,29 @@ const authenticateRawRouteWithScope =
       return yield* failEnvironmentScopeRequired(scope);
     }
   });
+
+export const layerGentlTasksRoute = HttpRouter.add(
+  "POST",
+  "/api/gentl/tasks",
+  Effect.gen(function* () {
+    yield* authenticateRawRouteWithScope(AuthAccessWriteScope);
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const headers = { "cache-control": "no-store" };
+    if (request.headers["content-type"]?.split(";")[0] !== "application/json") {
+      return HttpServerResponse.jsonUnsafe({}, { status: 415, headers });
+    }
+    const body = yield* request.json.pipe(Effect.orElseSucceed(() => null));
+    const command = GentlCommand.safeParse(body);
+    if (!command.success) return HttpServerResponse.jsonUnsafe({}, { status: 400, headers });
+    return yield* runGentlCommand(command.data).pipe(
+      Effect.match({
+        onSuccess: (result) => HttpServerResponse.jsonUnsafe(result, { headers }),
+        onFailure: () =>
+          HttpServerResponse.jsonUnsafe({ failure: "unavailable" }, { status: 502, headers }),
+      }),
+    );
+  }),
+);
 
 export const layerServerEnvironmentHttpApi = HttpApiBuilder.group(
   EnvironmentHttpApi,

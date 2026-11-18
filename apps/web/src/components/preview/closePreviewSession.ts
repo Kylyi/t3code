@@ -20,7 +20,6 @@ interface ClosePreviewSessionInput<E> {
   readonly snapshot: PreviewSessionSnapshot | null;
   readonly tabId: string;
   readonly threadRef: ScopedThreadRef;
-  readonly remember?: boolean;
 }
 
 export async function closePreviewSession<E>(
@@ -43,7 +42,7 @@ export async function closePreviewSession<E>(
     return result;
   }
   if (keepMounted) beginPreviewSessionClose(input.threadRef, input.tabId);
-  if (input.snapshot && input.remember !== false) {
+  if (input.snapshot) {
     useClosedViewStore.getState().remember({
       kind: "browser",
       threadRef: input.threadRef,

@@ -149,7 +149,6 @@ export function ServerBrowserSurface(props: {
   readonly tabId: string;
   readonly visible: boolean;
   readonly followSize?: boolean;
-  readonly contentOnly?: boolean;
   readonly controlPosition?: "top" | "bottom";
   readonly onFirstFrame?: () => void;
   readonly onViewport?: (viewport: PreviewStreamViewport) => void;
@@ -165,7 +164,6 @@ export function ServerBrowserSurface(props: {
     tabId,
     visible,
     followSize = true,
-    contentOnly = false,
     controlPosition = "top",
     onFirstFrame,
     onViewport,
@@ -425,14 +423,6 @@ export function ServerBrowserSurface(props: {
             setPromptText(next.dialog?.defaultValue ?? "");
           if (next.controller !== "you") {
             clearInput();
-            if (
-              contentOnly &&
-              next.canOperate &&
-              next.controller === "unclaimed" &&
-              (previous?.controller !== "unclaimed" || !previous.canOperate)
-            ) {
-              client.send({ type: "takeControl" });
-            }
           } else if (previous?.controller !== "you") {
             const size = sizeRef.current;
             if (followSize && size) client.send({ type: "resize", ...size });
@@ -477,7 +467,6 @@ export function ServerBrowserSurface(props: {
     accessDenied,
     cap,
     clearInput,
-    contentOnly,
     environmentId,
     followSize,
     hostSetup,
@@ -764,30 +753,28 @@ export function ServerBrowserSurface(props: {
       data-server-browser-surface={tabId}
       onMouseUp={handleMouseUp}
     >
-      {(!contentOnly || (control !== null && control.controller !== "you")) && (
-        <div
-          className={cn(
-            "visible relative z-20 flex shrink-0 items-center justify-between gap-2 border-border bg-background px-2 py-1",
-            controlPosition === "bottom" ? "order-last border-t" : "border-b",
-          )}
-        >
-          <span role="status" className="text-xs text-muted-foreground">
-            {previewStreamControlLabel(control, resolve)}
-          </span>
-          {control?.canOperate ? (
-            <Button
-              variant="outline"
-              size="xs"
-              disabled={control.controller === "another-viewer"}
-              onClick={() =>
-                send({ type: control.controller === "you" ? "releaseControl" : "takeControl" })
-              }
-            >
-              {control.controller === "you" ? <T>Release control</T> : <T>Take control</T>}
-            </Button>
-          ) : null}
-        </div>
-      )}
+      <div
+        className={cn(
+          "visible relative z-20 flex shrink-0 items-center justify-between gap-2 border-border bg-background px-2 py-1",
+          controlPosition === "bottom" ? "order-last border-t" : "border-b",
+        )}
+      >
+        <span role="status" className="text-xs text-muted-foreground">
+          {previewStreamControlLabel(control, resolve)}
+        </span>
+        {control?.canOperate ? (
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={control.controller === "another-viewer"}
+            onClick={() =>
+              send({ type: control.controller === "you" ? "releaseControl" : "takeControl" })
+            }
+          >
+            {control.controller === "you" ? <T>Release control</T> : <T>Take control</T>}
+          </Button>
+        ) : null}
+      </div>
       <div className="relative min-h-0 flex-1">
         {pdfUrl ? (
           <embed

@@ -219,7 +219,7 @@ export function RightPanelSurfaceContent(props: {
           <GentlPanel
             key={scopedThreadKey(threadRef)}
             threadRef={threadRef}
-            resourceId={surface.resourceId}
+            composerTarget={props.composerDraftTarget}
             visible={visible}
           />
         </Suspense>

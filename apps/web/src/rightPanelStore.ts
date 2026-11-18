@@ -82,7 +82,7 @@ export type RightPanelSurface =
       detailTab?: PullRequestDetailTab;
     }
   | { id: "pull-requests"; kind: "pull-requests" }
-  | { id: "gentl-tasks"; kind: "gentl-tasks"; resourceId?: string }
+  | { id: "gentl-tasks"; kind: "gentl-tasks" }
   /**
    * An issue opened in the issues list's shared panel, or beside a thread. Like `pull-request`,
    * the reference lives in the id so several issues can stay open as peer tabs.
@@ -161,7 +161,6 @@ interface RightPanelStoreState {
   openSideChat: (ref: ScopedThreadRef, threadId: ThreadId) => void;
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
   renameDevice: (ref: ScopedThreadRef, surfaceId: string, title: string) => void;
-  attachGentlBrowser: (ref: ScopedThreadRef, tabId: string) => boolean;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
   /** Moves in place; "" opens the root explorer. folderTrail keeps the return path; keepSource opens beside the source. */
@@ -844,22 +843,6 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             ),
           })),
         ),
-      attachGentlBrowser: (ref, tabId) => {
-        let attached = false;
-        set((state) =>
-          automaticUpdate(state, scopedThreadKey(ref), (current) => {
-            if (!current.surfaces.some((entry) => entry.kind === "gentl-tasks")) return current;
-            attached = true;
-            return {
-              ...current,
-              surfaces: current.surfaces.map((entry) =>
-                entry.kind === "gentl-tasks" ? { ...entry, resourceId: tabId } : entry,
-              ),
-            };
-          }),
-        );
-        return attached;
-      },
       openBrowser: (ref, tabId) =>
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) => {
