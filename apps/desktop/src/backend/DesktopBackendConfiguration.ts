@@ -600,6 +600,8 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
   const fileSystem = yield* FileSystem.FileSystem;
   const env = yield* HostProcess.Environment;
 
+  const gentlWslHome = env.T3CODE_GENTL_WSL_HOME?.trim();
+
   // wslhost loopback forwarding is unreliable on some Windows hosts; advertise the WSL IP instead.
   const wslBindHost = "0.0.0.0";
 
@@ -607,7 +609,7 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
     mode: "desktop" as const,
     noBrowser: true,
     port: input.port,
-    // Omit t3Home to keep the Linux backend from sharing the primary's Windows SQLite file.
+    ...(gentlWslHome ? { t3Home: gentlWslHome } : {}),
     host: wslBindHost,
     desktopBootstrapToken: input.bootstrapToken,
     desktopBootstrapSecret: input.bootstrapSecret,
