@@ -12,7 +12,7 @@ export interface GentlWorkspace extends GentlOption {
   domainName?: string | null;
 }
 export interface GentlBoard extends GentlOption {
-  description?: string | null;
+  structureNames?: string[];
   canEditTasks: boolean;
 }
 export interface GentlBoardMetadata {

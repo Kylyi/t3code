@@ -282,8 +282,65 @@ export const runGentlCommand = Effect.fn("GentlTasks.run")(
     if (!target) return yield* Effect.fail("gentl_unavailable");
     const invoke = (name: string, args: object) => call(target, command.instanceId, name, args);
     switch (command.action) {
-      case "boards":
-        return yield* invoke("get_task_tracking_context", {});
+      case "boards": {
+        const [tracking, platform] = yield* Effect.all(
+          [
+            invoke("get_task_tracking_context", {}),
+            invoke("get_platform_context", {}).pipe(Effect.orElseSucceed(() => null)),
+          ],
+          { concurrency: 2 },
+        );
+        const boards = z
+          .object({
+            boards: z.array(z.object({ id: z.string() }).passthrough()),
+          })
+          .safeParse(tracking);
+        const structures = z
+          .object({
+            structures: z.array(z.object({ id: z.string(), name: z.string() })),
+          })
+          .safeParse(platform);
+        if (!boards.success || !structures.success || !boards.data.boards.length) return tracking;
+
+        const structureNames = new Map(
+          structures.data.structures.map(({ id, name }) => [id, name]),
+        );
+        const namesByBoard = new Map<string, Set<string>>();
+        const take = 500;
+        const pageSchema = z.object({
+          items: z.array(
+            z.object({
+              structureId: z.string(),
+              related: z.object({ boardId: z.string().nullable().optional() }).optional(),
+            }),
+          ),
+          hasMore: z.boolean(),
+        });
+        for (let skip = 0; ; skip += take) {
+          const data = yield* invoke("list_structure_items", {
+            contentType: "BOARD",
+            take,
+            skip,
+          }).pipe(Effect.orElseSucceed(() => null));
+          const page = pageSchema.safeParse(data);
+          if (!page.success || !page.data.items.length) break;
+          for (const item of page.data.items) {
+            const name = structureNames.get(item.structureId);
+            const boardId = item.related?.boardId;
+            if (!name || !boardId) continue;
+            const names = namesByBoard.get(boardId) ?? new Set<string>();
+            names.add(name);
+            namesByBoard.set(boardId, names);
+          }
+          if (!page.data.hasMore) break;
+        }
+        return {
+          boards: boards.data.boards.map((board) => ({
+            ...board,
+            structureNames: [...(namesByBoard.get(board.id) ?? [])].sort(),
+          })),
+        };
+      }
       case "board":
         return yield* invoke("get_board_task_metadata", { boardId: command.boardId });
       case "viewer": {

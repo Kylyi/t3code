@@ -102,7 +102,9 @@ function GentlWorkspaceBoards({
           value={boardId}
           options={boards.value.boards.map((item) => ({
             ...item,
-            name: item.description ? `${item.name} (${item.description})` : item.name,
+            name: item.structureNames?.length
+              ? `(${item.structureNames.join(" / ")}) ${item.name}`
+              : item.name,
           }))}
           onChange={setBoardId}
           disabled={!boards.value.boards.length}
