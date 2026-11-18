@@ -1,5 +1,6 @@
 import * as Mime from "effect/http/Mime";
 import {
+  AuthAccessWriteScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   EnvironmentHttpApi,
@@ -57,6 +58,7 @@ import {
   DESKTOP_RENDERER_ORIGINS,
   MCP_HTTP_PATH,
 } from "./httpCors.ts";
+import { loadGentlTasks } from "./gentlTasks.ts";
 import { requestUrl } from "./requestUrl.ts";
 
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
@@ -322,7 +324,10 @@ function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
 const authenticateRawRouteWithScope =
   /* Request instrumentation already owns the span; keep this helper in that context. */
   Effect.fnUntraced(function* (
-    scope: typeof AuthOrchestrationReadScope | typeof AuthOrchestrationOperateScope,
+    scope:
+      | typeof AuthAccessWriteScope
+      | typeof AuthOrchestrationReadScope
+      | typeof AuthOrchestrationOperateScope,
   ) {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
@@ -341,6 +346,25 @@ const authenticateRawRouteWithScope =
       return yield* failEnvironmentScopeRequired(scope);
     }
   });
+
+export const layerGentlTasksRoute = HttpRouter.add(
+  "GET",
+  "/api/gentl/tasks",
+  Effect.gen(function* () {
+    yield* authenticateRawRouteWithScope(AuthAccessWriteScope);
+    const headers = { "cache-control": "no-store" };
+    return yield* loadGentlTasks().pipe(
+      Effect.match({
+        onSuccess: (feed) => HttpServerResponse.jsonUnsafe(feed, { headers }),
+        onFailure: () =>
+          HttpServerResponse.jsonUnsafe(
+            { error: "Task feed unavailable" },
+            { status: 502, headers },
+          ),
+      }),
+    );
+  }),
+);
 
 export const layerServerEnvironmentHttpApi = HttpApiBuilder.group(
   EnvironmentHttpApi,

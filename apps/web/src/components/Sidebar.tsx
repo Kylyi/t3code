@@ -256,6 +256,7 @@ import {
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { GentlTaskShelf } from "./sidebar/GentlTaskShelf";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { TooltipProvider } from "./ui/tooltip";
 import {
@@ -3221,6 +3222,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           </SidebarGroup>
         }
       >
+        {!isSearchingThreads &&
+          projects.some(
+            (project) =>
+              project.environmentId === primaryEnvironmentId &&
+              /(?:^|[\\/])mono[-_]new[\\/]?$/.test(project.workspaceRoot),
+          ) && <GentlTaskShelf />}
         <SidebarGroup className="flex-1" role="presentation">
           {isSearchingThreads ? (
             threadSearchResults.length > 0 ? (
