@@ -80,6 +80,57 @@ const stableUpdateInfo = (
 };
 
 describe("DesktopUpdates", () => {
+  it.effect("restarts into a staged Gentl build after stopping its backend", () => {
+    const harness = makeHarness({
+      platform: "win32",
+      env: { T3CODE_GENTL_UPDATE_ROOT: "/gentl", T3CODE_DISABLE_AUTO_UPDATE: "true" },
+      gentlMarker: "versions\\abcdef123456-v1.2.3\\win-unpacked",
+      stopBackend: Effect.sync(() => {
+        harness.installSteps.push("stopBackend");
+      }),
+    });
+    return Effect.gen(function* () {
+      const updates = yield* DesktopUpdates.DesktopUpdates;
+      yield* updates.configure;
+      const staged = yield* updates.getState;
+      assert.equal(staged.status, "downloaded");
+      assert.equal(staged.downloadedVersion, "1.2.3-gentl.gabcdef123456");
+      assert.equal(harness.checkCount(), 0);
+      assert.equal((yield* updates.installPrepared("old-build")).accepted, false);
+      assert.equal((yield* updates.install).accepted, true);
+      assert.deepEqual(harness.installSteps, [
+        "stopBackend",
+        "closeSshTunnels",
+        "relaunch:/gentl/versions/abcdef123456-v1.2.3/win-unpacked/T3 Code (Beta).exe",
+        "quit",
+      ]);
+    }).pipe(Effect.provide(harness.layer));
+  });
+
+  it.effect.each([
+    {
+      gentlMarker: "versions/abcdef123456-v1.2.3/win-unpacked",
+      resourcesPath: "/gentl/versions/abcdef123456-v1.2.3/win-unpacked/resources",
+    },
+    { gentlMarker: "versions/../elsewhere/win-unpacked", resourcesPath: "/missing/resources" },
+  ])(
+    "ignores Gentl markers that are current or invalid ($gentlMarker)",
+    ({ gentlMarker, resourcesPath }) => {
+      const harness = makeHarness({
+        platform: "win32",
+        env: { T3CODE_GENTL_UPDATE_ROOT: "/gentl" },
+        gentlMarker,
+        resourcesPath,
+      });
+      return Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        assert.equal((yield* updates.getState).status, "up-to-date");
+        assert.equal((yield* updates.install).accepted, false);
+      }).pipe(Effect.provide(harness.layer));
+    },
+  );
+
   it.effect("updates Linux .deb installs and leaves other non-AppImage installs off", () =>
     Effect.gen(function* () {
       const linuxState = (packageType: string | undefined) =>

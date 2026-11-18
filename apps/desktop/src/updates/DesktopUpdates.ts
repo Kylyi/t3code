@@ -33,11 +33,13 @@ import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopState from "../app/DesktopState.ts";
+import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopSshEnvironment from "../ssh/DesktopSshEnvironment.ts";
+import { parseGentlStagedUpdate } from "./gentlStagedUpdate.ts";
 import * as DesktopUpdatePolicy from "./DesktopUpdatePolicy.ts";
 import {
   normalizeDesktopUpdateReleaseNotes,
@@ -378,6 +380,7 @@ export const make = Effect.gen(function* () {
   const pool = yield* DesktopBackendPool.DesktopBackendPool;
   const sshEnvironment = yield* DesktopSshEnvironment.DesktopSshEnvironment;
   const desktopState = yield* DesktopState.DesktopState;
+  const electronApp = yield* ElectronApp.ElectronApp;
   const electronUpdater = yield* ElectronUpdater.ElectronUpdater;
   const electronWindow = yield* ElectronWindow.ElectronWindow;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
@@ -386,6 +389,34 @@ export const make = Effect.gen(function* () {
   const policy = yield* DesktopUpdatePolicy.DesktopUpdatePolicy;
   // Any user can set the mock flag, so it never replaces an administrator's update source.
   const mockUpdates = config.mockUpdates && policy.message === null;
+  const gentlUpdateRoot =
+    environment.platform === "win32" && environment.isPackaged && !environment.isDevelopment
+      ? Option.getOrUndefined(config.gentlUpdateRoot)
+      : undefined;
+  const readGentlUpdate = Effect.fn("desktop.updates.readGentlUpdate")(function* () {
+    if (!gentlUpdateRoot) return null;
+    const marker = yield* fileSystem
+      .readFileString(environment.path.join(gentlUpdateRoot, "current.txt"))
+      .pipe(Effect.orElseSucceed(() => ""));
+    const candidate = parseGentlStagedUpdate(marker);
+    if (!candidate) return null;
+    const directory = environment.path.join(
+      gentlUpdateRoot,
+      "versions",
+      candidate.directory,
+      "win-unpacked",
+    );
+    const runningDirectory = environment.path.dirname(environment.resourcesPath);
+    if (
+      environment.path.normalize(directory).toLowerCase() ===
+      environment.path.normalize(runningDirectory).toLowerCase()
+    ) {
+      return null;
+    }
+    const executable = environment.path.join(directory, "T3 Code (Beta).exe");
+    const exists = yield* fileSystem.exists(executable).pipe(Effect.orElseSucceed(() => false));
+    return exists ? { executable, version: candidate.version } : null;
+  });
 
   const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
   const activeUpdateActionRef = yield* Ref.make<Option.Option<UpdateAction>>(Option.none());
@@ -472,6 +503,7 @@ export const make = Effect.gen(function* () {
   );
 
   const resolveDisabledReason = Effect.gen(function* () {
+    if (gentlUpdateRoot && policy.mode !== "off") return Option.none<string>();
     const hasFeedConfig = yield* hasUpdateFeedConfig;
     return Option.fromNullishOr(
       getAutoUpdateDisabledReason({
@@ -591,6 +623,17 @@ export const make = Effect.gen(function* () {
     if (actionReservation === "acquire" && !(yield* tryStartUpdateAction("check"))) return false;
 
     const check = Effect.gen(function* () {
+      if (gentlUpdateRoot) {
+        const candidate = yield* readGentlUpdate();
+        const checkedAt = yield* currentIsoTimestamp;
+        yield* setState(
+          candidate
+            ? { ...reduceDesktopUpdateStateOnDownloadComplete(state, candidate.version), checkedAt }
+            : reduceDesktopUpdateStateOnNoUpdate({ ...state, downloadedVersion: null }, checkedAt),
+        );
+        return true;
+      }
+
       // An offer stays on screen while re-checking, so finding it again changes nothing.
       if (!isOffered(state)) {
         yield* setState(reduceDesktopUpdateStateOnCheckStart(state, yield* currentIsoTimestamp));
@@ -867,6 +910,7 @@ export const make = Effect.gen(function* () {
   const installDownloadedUpdate = (expectedVersion?: string) =>
     Effect.scoped(
       Effect.gen(function* () {
+        const gentlUpdate = yield* readGentlUpdate();
         const admission = yield* admitAfterCheck(
           Effect.gen(function* () {
             const state = yield* Ref.get(updateStateRef);
@@ -877,7 +921,8 @@ export const make = Effect.gen(function* () {
             if (
               (yield* Ref.get(desktopState.quitting)) ||
               !(yield* Ref.get(updaterConfiguredRef)) ||
-              !hasExpectedDownload
+              !hasExpectedDownload ||
+              (gentlUpdateRoot !== undefined && gentlUpdate?.version !== state.downloadedVersion)
             ) {
               return "refused" as const;
             }
@@ -907,7 +952,8 @@ export const make = Effect.gen(function* () {
           yield* writeUpdateRestartMarker;
           yield* writeUpdateInProgressMarker;
           const { downloadedVersion } = yield* Ref.get(updateStateRef);
-          if (downloadedVersion !== null) yield* writeInstallRecord(downloadedVersion);
+          if (!gentlUpdateRoot && downloadedVersion !== null)
+            yield* writeInstallRecord(downloadedVersion);
           // Stop pooled backends and SSH tunnels before quitAndInstall can outrun their scope finalizers.
           const instances = yield* pool.list;
           // stop clears desiredRunning, so retain the recovery set beforehand.
@@ -927,6 +973,11 @@ export const make = Effect.gen(function* () {
             ],
             { concurrency: "unbounded" },
           );
+          if (gentlUpdate) {
+            yield* electronApp.relaunch({ execPath: gentlUpdate.executable, args: [] });
+            yield* electronApp.quit;
+            return { accepted: true, completed: false, failed: false };
+          }
           yield* electronUpdater.quitAndInstall({
             isSilent: true,
             isForceRunAfter: true,
@@ -983,6 +1034,7 @@ export const make = Effect.gen(function* () {
     // A download can be hours old: a release published since replaces it before restarting.
     const retained = yield* Ref.get(updateStateRef);
     if (
+      !gentlUpdateRoot &&
       retained.downloadedVersion !== null &&
       (expectedVersion === undefined || retained.downloadedVersion === expectedVersion) &&
       (yield* checkForUpdates(
@@ -1039,7 +1091,7 @@ export const make = Effect.gen(function* () {
       }),
       Effect.forkScoped,
     );
-    yield* Effect.sleep(AUTO_UPDATE_POLL_INTERVAL).pipe(
+    yield* Effect.sleep(gentlUpdateRoot ? "10 seconds" : AUTO_UPDATE_POLL_INTERVAL).pipe(
       Effect.andThen(checkForUpdates("poll")),
       Effect.forever,
       Effect.catchCause((cause) => {
@@ -1272,12 +1324,12 @@ export const make = Effect.gen(function* () {
         });
       }
 
-      if (mockUpdates) {
+      if (!gentlUpdateRoot && mockUpdates) {
         yield* electronUpdater.setFeedURL({
           provider: "generic",
           url: `http://localhost:${config.mockUpdateServerPort}`,
         } as ElectronUpdater.ElectronUpdaterFeedUrl);
-      } else if (policy.feedUrl !== undefined) {
+      } else if (!gentlUpdateRoot && policy.feedUrl !== undefined) {
         // The administrator's mirror replaces the GitHub feed baked into app-update.yml.
         yield* electronUpdater.setFeedURL({
           provider: "generic",
@@ -1299,6 +1351,11 @@ export const make = Effect.gen(function* () {
         return;
       }
       yield* Ref.set(updaterConfiguredRef, true);
+      if (gentlUpdateRoot) {
+        yield* checkForUpdates("startup");
+        yield* startUpdatePollers;
+        return;
+      }
 
       yield* electronUpdater.setAutoDownload(false);
       yield* electronUpdater.setAutoInstallOnAppQuit(false);
@@ -1395,7 +1452,7 @@ export const make = Effect.gen(function* () {
           return yield* Ref.get(updateStateRef);
         }
 
-        yield* applyAutoUpdaterChannel(nextChannel);
+        if (!gentlUpdateRoot) yield* applyAutoUpdaterChannel(nextChannel);
         // Only leaving the running build's track can need an older release.
         yield* checkForUpdates(
           "channel-change",
