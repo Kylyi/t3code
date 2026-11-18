@@ -341,8 +341,46 @@ export const runGentlCommand = Effect.fn("GentlTasks.run")(
           })),
         };
       }
-      case "board":
-        return yield* invoke("get_board_task_metadata", { boardId: command.boardId });
+      case "board": {
+        const [metadata, history] = yield* Effect.all(
+          [
+            invoke("get_board_task_metadata", { boardId: command.boardId }),
+            invoke("query_api_operation", {
+              operationId: "boardFindUnique",
+              query: {
+                q: {
+                  where: { id: command.boardId },
+                  select: {
+                    sprints: { select: { id: true, name: true, status: true, endDate: true } },
+                  },
+                },
+              },
+            }).pipe(Effect.orElseSucceed(() => null)),
+          ],
+          { concurrency: 2 },
+        );
+        const boardMetadata = z
+          .object({ sprints: z.array(z.unknown()) })
+          .passthrough()
+          .safeParse(metadata);
+        const boardHistory = z
+          .object({
+            result: z.object({
+              sprints: z.array(
+                z.object({
+                  id: z.string(),
+                  name: z.string(),
+                  status: z.string(),
+                  endDate: z.string().nullable(),
+                }),
+              ),
+            }),
+          })
+          .safeParse(history);
+        return boardMetadata.success && boardHistory.success
+          ? { ...boardMetadata.data, sprints: boardHistory.data.result.sprints }
+          : metadata;
+      }
       case "viewer": {
         const data = yield* invoke("get_platform_context", {});
         const viewer = z

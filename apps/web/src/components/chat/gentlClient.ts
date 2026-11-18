@@ -21,7 +21,7 @@ export interface GentlBoardMetadata {
   types: GentlOption[];
   tags: GentlOption[];
   users: GentlOption[];
-  sprints?: GentlOption[];
+  sprints?: (GentlOption & { status?: string; endDate?: string | null })[];
   permissions: { createTasks: boolean; updateTasks: boolean; deleteTasks: boolean };
 }
 export interface GentlTask extends GentlOption {

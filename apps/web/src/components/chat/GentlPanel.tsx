@@ -12,8 +12,10 @@ import { useState } from "react";
 
 import type { DraftId } from "../../composerDraftStore";
 import { Button } from "../ui/button";
+import { Badge } from "../ui/badge";
 import { Input } from "../ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
+import { useDeadlinePassed } from "../../hooks/useDeadline";
 import { useDebouncedValue } from "../../state/queries";
 import { GentlBoardFilters, type GentlTaskFilters } from "./GentlBoardFilters";
 import { GentlLoadState, GentlPicker, GentlBadge } from "./gentlControls";
@@ -199,6 +201,13 @@ function GentlBoardTasks({
     ...scope,
     boardId: board.id,
   });
+  const sprint = metadata.value?.sprints?.find(({ id }) => id === filters.sprintId);
+  const end = sprint?.endDate ? Date.parse(sprint.endDate) : NaN;
+  const ended = useDeadlinePassed(Number.isFinite(end) ? end : null);
+  const pastSprint =
+    sprint && (sprint.status === "COMPLETED" || sprint.status === "CANCELLED" || ended)
+      ? sprint
+      : undefined;
   const feed = useGentlData<{ tasks: GentlTask[] }>(
     { action: "tasks", ...scope, boardId: board.id, page, search: query, filters },
     revision,
@@ -262,6 +271,17 @@ function GentlBoardTasks({
           </Button>
         </div>
       </div>
+      {pastSprint && (
+        <div
+          className="flex items-center gap-2 border-b border-border px-3 py-2 text-sm"
+          role="status"
+        >
+          <Badge variant="warning">
+            <T>Past sprint</T>
+          </Badge>
+          <span className="min-w-0 truncate">{pastSprint.name}</span>
+        </div>
+      )}
       {filtersOpen &&
         (metadata.value ? (
           <GentlBoardFilters
