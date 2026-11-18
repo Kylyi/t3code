@@ -1763,12 +1763,8 @@ export default function ChatView(props: ChatViewProps) {
     : null;
   const hasTimelineTopBanner = Boolean(timelineThreadError) || visibleProviderStatus !== null;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
-  const gentlTasksAvailable =
-    activeProjectCwd !== null &&
-    primaryEnvironment?.environmentId === activeThreadRef?.environmentId &&
-    /(?:^|[\\/])mono[-_]new[\\/]?$/.test(activeProjectCwd);
   const addGentlTasksSurface = useStableCallback(() => {
-    if (activeThreadRef && gentlTasksAvailable) {
+    if (activeThreadRef) {
       useRightPanelStore.getState().open(activeThreadRef, "gentl-tasks");
     }
   });
@@ -3283,7 +3279,6 @@ export default function ChatView(props: ChatViewProps) {
       threadRef={activeThreadRef}
       environmentId={activeThread.environmentId}
       visible={rightPanelOpen}
-      gentlTasksAvailable={gentlTasksAvailable}
       composerDraftTarget={composerDraftTarget}
       keybindings={keybindings}
       configuredPreviewUrls={configuredPreviewUrls}
@@ -4087,7 +4082,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddPullRequest={addPullRequestSurfaceStable}
           onAddPullRequests={addPullRequestsSurfaceStable}
           onAddDevice={addDeviceSurfaceStable}
-          onAddGentlTasks={gentlTasksAvailable ? addGentlTasksSurface : undefined}
+          onAddGentlTasks={addGentlTasksSurface}
           onAddSideChat={sideChatsOffered ? openSideChatStable : undefined}
           browserAvailable={canOperatePreview && browserAvailable}
           terminalAvailable={activeProject !== null && canOperateTerminal}

@@ -69,7 +69,6 @@ export function RightPanelSurfaceContent(props: {
   readonly threadRef: ScopedThreadRef;
   readonly environmentId: EnvironmentId;
   readonly visible: boolean;
-  readonly gentlTasksAvailable: boolean;
   readonly composerDraftTarget: ScopedThreadRef | DraftId;
   readonly keybindings: ResolvedKeybindingsConfig;
   readonly configuredPreviewUrls: ReadonlyArray<string>;
@@ -213,7 +212,7 @@ export function RightPanelSurfaceContent(props: {
         />
       );
     case "gentl-tasks":
-      return props.gentlTasksAvailable ? <GentlTasksPanel visible={visible} /> : null;
+      return <GentlTasksPanel visible={visible} />;
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
     case "side-chat":
