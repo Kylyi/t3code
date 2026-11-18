@@ -99,7 +99,16 @@ function GentlTaskContent({
   const startImplementation = () => {
     const store = useComposerDraftStore.getState();
     const existing = store.getComposerDraft(composerTarget)?.prompt ?? "";
-    const instruction = `Implement Gentl task ${task.id} (#${task.uuid}, ${workspace.name} / ${board.name}). Use the gentl MCP (target ${workspace.target}, instance ${workspace.id}) to fetch the task details before starting.`;
+    const instruction = [
+      // oxlint-disable-next-line t3code/no-em-dash-copy -- Preserve the approved composer template.
+      `Implement Gentl task #${task.uuid} — ${task.name}`,
+      "",
+      "Read the task description and comments in Gentl before making changes.",
+      "",
+      `Gentl MCP · ${workspace.name} / ${board.name}`,
+      `Target: \`${workspace.target}\` · Instance: \`${workspace.id}\``,
+      `Task ID: \`${task.id}\``,
+    ].join("\n");
     if (!existing.includes(instruction)) {
       store.setPrompt(composerTarget, existing ? `${existing}\n\n${instruction}` : instruction);
     }
