@@ -47,6 +47,7 @@ import {
   FileDiff,
   Files,
   Globe2,
+  ListTodoIcon,
   MessagesSquare,
   Plus,
   TerminalSquare,
@@ -149,6 +150,7 @@ export interface RightPanelTabsProps {
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddDevice: () => void;
+  onAddGentlTasks?: (() => void) | undefined;
   /** Absent where side chats are not offered. */
   onAddSideChat?: (() => void) | undefined;
   browserAvailable: boolean;
@@ -333,6 +335,7 @@ function RightPanelEmptyState(props: {
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddDevice: () => void;
+  onAddGentlTasks?: (() => void) | undefined;
   /** Absent where side chats are not offered. */
   onAddSideChat?: (() => void) | undefined;
   browserAvailable: boolean;
@@ -418,6 +421,18 @@ function RightPanelEmptyState(props: {
             disabledReason:
               props.sideChatDisabledReason ?? messages(SURFACE_UNAVAILABLE_HINTS.sideChat),
             onClick: props.onAddSideChat,
+          },
+        ]
+      : []),
+    ...(props.onAddGentlTasks
+      ? [
+          {
+            label: msg("Latest tasks"),
+            icon: ListTodoIcon,
+            shortcut: "G",
+            available: true,
+            disabledReason: "",
+            onClick: props.onAddGentlTasks,
           },
         ]
       : []),
@@ -612,6 +627,8 @@ function surfaceTitle(
       return /^\d+$/.test(surface.key) ? `#${surface.key}` : surface.key;
     case "device":
       return surface.title ?? surface.target?.name ?? resolve(msg("Device"));
+    case "gentl-tasks":
+      return resolve(msg("Latest tasks"));
     case "side-chat":
       return resolve(msg("Side chat"));
     case "preview": {
@@ -704,6 +721,8 @@ function SurfaceIcon({
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
     case "issue":
       return <IssueSurfaceIcon surface={surface} environmentId={environmentId} />;
+    case "gentl-tasks":
+      return <ListTodoIcon className="size-3 shrink-0" />;
     case "side-chat":
       return <SideChatTabIcon environmentId={environmentId} threadId={surface.threadId} />;
     case "device":
@@ -1238,6 +1257,18 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           },
         ]
       : []),
+    ...(props.onAddGentlTasks
+      ? [
+          {
+            label: msg("Latest tasks"),
+            icon: ListTodoIcon,
+            shortcut: "G",
+            available: true,
+            disabledReason: "",
+            onClick: props.onAddGentlTasks,
+          },
+        ]
+      : []),
   ] as const;
 
   const handleAddSurfaceMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -1642,6 +1673,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequest={props.onAddPullRequest}
             onAddPullRequests={props.onAddPullRequests}
             onAddDevice={props.onAddDevice}
+            onAddGentlTasks={props.onAddGentlTasks}
             onAddSideChat={props.onAddSideChat}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}

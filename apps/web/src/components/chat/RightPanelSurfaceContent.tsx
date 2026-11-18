@@ -1,3 +1,4 @@
+import { GentlTasksPanel } from "./GentlTasksPanel";
 import { useGT } from "gt-react";
 import type {
   EditorId,
@@ -68,6 +69,7 @@ export function RightPanelSurfaceContent(props: {
   readonly threadRef: ScopedThreadRef;
   readonly environmentId: EnvironmentId;
   readonly visible: boolean;
+  readonly gentlTasksAvailable: boolean;
   readonly composerDraftTarget: ScopedThreadRef | DraftId;
   readonly keybindings: ResolvedKeybindingsConfig;
   readonly configuredPreviewUrls: ReadonlyArray<string>;
@@ -210,6 +212,8 @@ export function RightPanelSurfaceContent(props: {
           }}
         />
       );
+    case "gentl-tasks":
+      return props.gentlTasksAvailable ? <GentlTasksPanel visible={visible} /> : null;
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
     case "side-chat":
